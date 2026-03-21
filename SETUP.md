@@ -135,128 +135,21 @@ All compose files live in `/sharedfolders/compose/` (managed via OMV → Service
 
 ### jellyfin (✅ Running)
 
-```yaml
-services:
-  jellyfin:
-    image: jellyfin/jellyfin:latest
-    container_name: jellyfin
-    network_mode: host
-    volumes:
-      - /sharedfolders/dev/config/jellyfin:/config
-      - /sharedfolders/dev/cache/jellyfin:/cache
-      - /sharedfolders/movies:/media/movies
-      - /sharedfolders/tv:/media/tv
-      - /sharedfolders/music:/media/music
-      - /sharedfolders/photos:/media/photos
-      - /sharedfolders/videos:/media/videos
-    restart: unless-stopped
-```
+**Compose file:** [`setup/jellyfin-docker-compose.yml`](setup/jellyfin-docker-compose.yml)
 
 ### nginx-proxy-manager (✅ Running)
 
-```yaml
-services:
-  nginx-proxy-manager:
-    image: jc21/nginx-proxy-manager:latest
-    container_name: nginx-proxy-manager
-    network_mode: host
-    volumes:
-      - /sharedfolders/dev/compose/nginx-proxy-manager/data:/data
-      - /sharedfolders/dev/compose/nginx-proxy-manager/letsencrypt:/etc/letsencrypt
-    restart: unless-stopped
-```
+**Compose file:** [`setup/npm-docker-compose.yml`](setup/npm-docker-compose.yml)
 
 ### cloudflared (✅ Running)
 
-```yaml
-services:
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    container_name: cloudflared
-    network_mode: host
-    command: tunnel --no-autoupdate run --token YOUR_TOKEN_HERE
-    restart: unless-stopped
-```
+**Compose file:** [`setup/cloudflared-docker-compose.yml`](setup/cloudflared-docker-compose.yml)
 
 ### authentik (✅ Running)
 
 All four containers share a bridge network so postgres and redis are never exposed on the host. Only port 9000 is published for NPM to reach. **Do not** use `network_mode: host` for postgres or redis — it would expose standard ports on the host and conflict with other services (e.g. Seafile) that also run postgres.
 
-```yaml
-networks:
-  authentik:
-    driver: bridge
-
-services:
-  postgresql:
-    image: postgres:16
-    container_name: authentik-db
-    networks:
-      - authentik
-    environment:
-      POSTGRES_DB: authentik
-      POSTGRES_USER: authentik
-      POSTGRES_PASSWORD: YOUR_DB_PASSWORD
-    volumes:
-      - /sharedfolders/dev/compose/authentik/db:/var/lib/postgresql/data
-    restart: unless-stopped
-
-  redis:
-    image: redis:alpine
-    container_name: authentik-redis
-    networks:
-      - authentik
-    restart: unless-stopped
-
-  authentik-server:
-    image: ghcr.io/goauthentik/server:2024.12.3
-    container_name: authentik-server
-    command: server
-    networks:
-      - authentik
-    ports:
-      - "9000:9000"
-    environment:
-      AUTHENTIK_REDIS__HOST: authentik-redis
-      AUTHENTIK_POSTGRESQL__HOST: authentik-db
-      AUTHENTIK_POSTGRESQL__NAME: authentik
-      AUTHENTIK_POSTGRESQL__USER: authentik
-      AUTHENTIK_POSTGRESQL__PASSWORD: YOUR_DB_PASSWORD
-      AUTHENTIK_SECRET_KEY: YOUR_LONG_RANDOM_SECRET
-    volumes:
-      - /sharedfolders/dev/compose/authentik/media:/media
-      - /sharedfolders/dev/compose/authentik/templates:/templates
-    restart: unless-stopped
-
-  authentik-worker:
-    image: ghcr.io/goauthentik/server:2024.12.3
-    container_name: authentik-worker
-    command: worker
-    networks:
-      - authentik
-    environment:
-      AUTHENTIK_REDIS__HOST: authentik-redis
-      AUTHENTIK_POSTGRESQL__HOST: authentik-db
-      AUTHENTIK_POSTGRESQL__NAME: authentik
-      AUTHENTIK_POSTGRESQL__USER: authentik
-      AUTHENTIK_POSTGRESQL__PASSWORD: YOUR_DB_PASSWORD
-      AUTHENTIK_SECRET_KEY: YOUR_LONG_RANDOM_SECRET
-    volumes:
-      - /sharedfolders/dev/compose/authentik/media:/media
-      - /sharedfolders/dev/compose/authentik/templates:/templates
-    restart: unless-stopped
-```
-
-> Generate secret key with: `openssl rand -base64 36`
-> Same secret key value must be used in both server and worker blocks.
-
-**Volume permissions (required on first deploy):**
-```bash
-chown -R 1000:1000 /sharedfolders/dev/compose/authentik/   # authentik-server & worker
-chown -R 999:999 /sharedfolders/dev/compose/authentik/db   # postgres
-```
-
-**First-time setup:** Visit `https://auth.tustin.house/if/flow/initial-setup/` to create the admin account. This URL is only valid once — if already visited, just log in normally.
+**Compose file:** [`setup/authentik-docker-compose.yml`](setup/authentik-docker-compose.yml) — includes volume permission and first-time setup notes in comments.
 
 ### seafile (✅ Running)
 
@@ -314,6 +207,31 @@ Jellyfin is wired into Authentik via the Jellyfin SSO plugin using OAuth2/OIDC.
 2. Set username, name, email, then set a password for the user
 3. No extra policy bindings needed — all Authentik users can access the Jellyfin app by default
 4. User visits the SSO login URL (or clicks the button on the login page) and a Jellyfin account is auto-created on first login (via "Enable folder creation" in the SSO plugin)
+
+---
+
+## Seafile SSO (✅ Configured)
+
+Seafile is wired into Authentik via OAuth2/OIDC, configured in `seahub_settings.py`.
+
+### Authentik side
+- **Provider:** OAuth2/OpenID Connect, named `Seafile`
+- **Redirect URI:** `https://seafile.tustin.house/oauth/callback/`
+- **Application:** slug `seafile`, linked to above provider
+
+### Seafile side
+- **Config file:** `/shared/seafile/conf/seahub_settings.py` inside the `seafile` container (host path: `/sharedfolders/dev/compose-data/seafile/data/seafile/conf/seahub_settings.py`)
+- **OAuth reference config:** [`setup/seafile-seahub-oauth.py`](setup/seafile-seahub-oauth.py)
+- **Auto-create users:** ✅ (`OAUTH_CREATE_UNKNOWN_USER = True`)
+- **Auto-activate users:** ✅ (`OAUTH_ACTIVATE_USER_AFTER_CREATION = True`)
+- **Attribute mapping:** Authentik `sub` → Seafile `uid` (required), `email` → `contact_email` (required), `name` → `name` (optional)
+
+The login page shows a **"Single Sign-On"** button. Users click it, authenticate via Authentik, and a Seafile account is auto-created on first login.
+
+### Adding new users to Seafile
+1. Create the user in Authentik (Directory → Users → Create) with username, email, and password
+2. User visits https://seafile.tustin.house and clicks "Single Sign-On"
+3. Seafile account is auto-created on first SSO login
 
 ---
 
@@ -382,7 +300,7 @@ claude
 | Jellyfin SSO login button on login page | ✅ Done |
 | Seafile deployed | ✅ Done |
 | Seafile NPM proxy host configured | ✅ Done |
-| Seafile wired into Authentik SSO | ⏳ Pending |
+| Seafile wired into Authentik SSO | ✅ Done |
 
 ---
 
@@ -392,8 +310,8 @@ claude
 2. ~~Add SSO login button to Jellyfin login page~~ ✅
 3. ~~Deploy Seafile~~ ✅
 4. ~~Add `seafile.tustin.house` proxy host in NPM~~ ✅
-5. Wire Seafile into Authentik SSO (OAuth2, same pattern as Jellyfin)
-6. Create user accounts in Seafile
+5. ~~Wire Seafile into Authentik SSO~~ ✅
+6. ~~Create user accounts in Seafile~~ ✅ (handled by SSO — accounts auto-created on first login)
 7. Instruct users on creating encrypted libraries for sensitive documents
 
 ---

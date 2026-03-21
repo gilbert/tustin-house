@@ -1,0 +1,14 @@
+services:
+  jellyfin:
+    image: jellyfin/jellyfin:latest
+    container_name: jellyfin
+    network_mode: host
+    volumes:
+      - /sharedfolders/dev/config/jellyfin:/config
+      - /sharedfolders/dev/cache/jellyfin:/cache
+      - /sharedfolders/movies:/media/movies
+      - /sharedfolders/tv:/media/tv
+      - /sharedfolders/music:/media/music
+      - /sharedfolders/photos:/media/photos
+      - /sharedfolders/videos:/media/videos
+    restart: unless-stopped

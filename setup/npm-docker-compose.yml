@@ -1,0 +1,9 @@
+services:
+  nginx-proxy-manager:
+    image: jc21/nginx-proxy-manager:latest
+    container_name: nginx-proxy-manager
+    network_mode: host
+    volumes:
+      - /sharedfolders/dev/compose/nginx-proxy-manager/data:/data
+      - /sharedfolders/dev/compose/nginx-proxy-manager/letsencrypt:/etc/letsencrypt
+    restart: unless-stopped

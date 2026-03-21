@@ -35,6 +35,8 @@ The `:has()` selector enables cross-DOM toggling: a checkbox in the disclaimer c
 
 Claude Code runs as a non-root `ai` user with Docker access. It can read/write compose files and run `docker`/`docker compose` commands but cannot modify OMV config or OS files. Operations requiring root (e.g., `chown` for new service volume dirs) must be done by the human operator.
 
+Outbound network access is restricted by a squid proxy whitelist. If a task requires fetching from a domain that isn't whitelisted, use `/request-domain` to ask the human operator to add it. Check `setup/squid.conf` for the current allowed domains before requesting. Never attempt to bypass the proxy.
+
 ## Key Constraints
 
 - The 5800XT has no iGPU — motherboard video outputs are non-functional. NAS is headless.
