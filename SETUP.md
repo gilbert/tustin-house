@@ -282,14 +282,14 @@ Jellyfin is wired into Authentik via the Jellyfin SSO plugin using OAuth2/OIDC.
 
 **SSO login URL:** `https://jellyfin.tustin.house/sso/OID/start/authentik`
 
-**Login page button:** The Jellyfin login page has no built-in SSO button. To add one, go to Jellyfin Dashboard → General → Branding → Login disclaimer and paste:
-```html
-<form action="https://jellyfin.tustin.house/sso/OID/start/authentik">
-  <button style="margin-top:1em;padding:0.8em 2em;font-size:1.1em;width:100%;background:#6c3fe0;color:white;border:none;border-radius:0.3em;cursor:pointer;">
-    Sign in with Authentik
-  </button>
-</form>
-```
+**Login page customization (✅ Done):** The login page is customized via the Jellyfin Branding API (`/System/Configuration/branding`) using two fields:
+
+- **`CustomCss`** — injected as a raw `<style>` tag (bypasses DOMPurify). Hides the default visual login (user tiles), manual login form, and utility buttons (Manual Login, Forgot Password, Change Server). Reorders the disclaimer to the top via flexbox `order: -1`. Styles the SSO button. Uses `#loginPage:has(.admin-toggle-cb:checked) .manualLoginForm` to reveal Jellyfin's built-in login form when the toggle checkbox is checked.
+- **`LoginDisclaimer`** — sanitized by DOMPurify (no `<style>`, `<script>`, or event handlers). Contains the SSO form button and a pure CSS checkbox hack (`<input type="checkbox">` + `<label>`) for the "Sign in with username instead" toggle.
+
+**Key constraint:** DOMPurify (default config) strips `<style>`, `<script>`, and all event handlers (`onclick`, etc.) from LoginDisclaimer. Use `CustomCss` for all styling and interaction logic (CSS-only). The `:has()` selector enables cross-DOM toggling from the checkbox in the disclaimer to the `.manualLoginForm` elsewhere in the page.
+
+**API key:** A Jellyfin API key (`claude`) is stored in `/home/ai/tustin-house/.env` (gitignored). Used with `Authorization: MediaBrowser Token=<key>` header. The correct endpoint for writing branding config is `POST /System/Configuration/branding` (not `/Branding/Configuration`, which is read-only GET).
 
 ### Adding new Authentik users to Jellyfin
 1. In Authentik admin (`https://auth.tustin.house/if/admin/`), go to Directory → Users → Create
@@ -360,8 +360,8 @@ claude
 | Authentik deployed | ✅ Done |
 | Jellyfin wired into Authentik SSO | ✅ Done |
 | `ai` user created for Claude Code on NAS | ✅ Done |
-| Claude Code installed on NAS | ⏳ Next step |
-| Jellyfin SSO login button on login page | ⏳ Pending |
+| Claude Code installed on NAS | ✅ Done |
+| Jellyfin SSO login button on login page | ✅ Done |
 | Seafile deployed | ⏳ Pending |
 | Seafile wired into Authentik SSO | ⏳ Pending |
 
@@ -369,8 +369,8 @@ claude
 
 ## Immediate Next Steps
 
-1. Install Claude Code on the NAS (SSH in as `ai`, run `curl -fsSL https://claude.ai/install.sh | sh`)
-2. Add SSO login button to Jellyfin login page (via Branding → Login disclaimer)
+1. ~~Install Claude Code on the NAS~~ ✅
+2. ~~Add SSO login button to Jellyfin login page~~ ✅
 3. Deploy Seafile:
    1. Create a dedicated bridge network (same pattern as authentik stack)
    2. Deploy Seafile CE Docker image with its own postgres instance on that bridge network

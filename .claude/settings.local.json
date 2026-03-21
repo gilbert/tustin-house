@@ -1,6 +1,9 @@
 {
   "permissions": {
     "allow": [
+      "Bash(sqlite3:*)",
+      "Bash(curl:*)",
+      "WebFetch(domain:jellyfin.tustin.house)"
     ]
   }
 }
