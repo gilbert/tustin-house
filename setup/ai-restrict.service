@@ -1,0 +1,12 @@
+[Unit]
+Description=nftables rules for ai user
+After=network.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f /etc/nftables.d/ai-restrict.conf
+ExecStop=/usr/sbin/nft delete table inet ai_restrict
+
+[Install]
+WantedBy=multi-user.target

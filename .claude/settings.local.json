@@ -4,6 +4,10 @@
       "Bash(sqlite3:*)",
       "Bash(curl:*)",
       "WebFetch(domain:jellyfin.tustin.house)"
+      "WebFetch(domain:manual.seafile.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebSearch",
+      "WebFetch(domain:github.com)"
     ]
   }
 }

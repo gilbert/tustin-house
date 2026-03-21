@@ -1,0 +1,135 @@
+# Seafile 13 CE — single-file compose for OMV
+# Based on official multi-file templates from manual.seafile.com/13.0
+# Ref: https://manual.seafile.com/latest/setup/setup_ce_by_docker/
+#
+# Before first start:
+#   1. Replace every YOUR_* placeholder below
+#   2. Generate a random JWT key (≥ 32 chars):
+#        openssl rand -hex 32
+#      and paste it into JWT_PRIVATE_KEY on both seafile and notification-server
+
+services:
+
+  # ── MariaDB ───────────────────────────────────────────────────────────
+  db:
+    image: mariadb:10.11
+    container_name: seafile-mysql
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=YOUR_DB_ROOT_PASSWORD
+      - MYSQL_LOG_CONSOLE=true
+      - MARIADB_AUTO_UPGRADE=1
+    volumes:
+      - /sharedfolders/dev/compose-data/seafile/db:/var/lib/mysql
+    networks:
+      - seafile-net
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "/usr/local/bin/healthcheck.sh",
+          "--connect",
+          "--mariadbupgrade",
+          "--innodb_initialized",
+        ]
+      interval: 20s
+      start_period: 30s
+      timeout: 5s
+      retries: 10
+
+  # ── Redis ─────────────────────────────────────────────────────────────
+  redis:
+    image: redis:alpine
+    container_name: seafile-redis
+    restart: unless-stopped
+    networks:
+      - seafile-net
+
+  # ── Seafile Server ───────────────────────────────────────────────────
+  seafile:
+    image: seafileltd/seafile-mc:13.0-latest
+    container_name: seafile
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      - /sharedfolders/dev/compose-data/seafile/data:/shared
+    environment:
+      # ── Database ──
+      - SEAFILE_MYSQL_DB_HOST=db
+      - SEAFILE_MYSQL_DB_PORT=3306
+      - SEAFILE_MYSQL_DB_USER=seafile
+      - SEAFILE_MYSQL_DB_PASSWORD=YOUR_DB_PASSWORD
+      - INIT_SEAFILE_MYSQL_ROOT_PASSWORD=YOUR_DB_ROOT_PASSWORD
+      - SEAFILE_MYSQL_DB_CCNET_DB_NAME=ccnet_db
+      - SEAFILE_MYSQL_DB_SEAFILE_DB_NAME=seafile_db
+      - SEAFILE_MYSQL_DB_SEAHUB_DB_NAME=seahub_db
+      # ── Cache ──
+      - CACHE_PROVIDER=redis
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=
+      # ── Server identity ──
+      - SEAFILE_SERVER_HOSTNAME=seafile.tustin.house
+      - SEAFILE_SERVER_PROTOCOL=https
+      - SITE_ROOT=/
+      - TIME_ZONE=America/Los_Angeles
+      - JWT_PRIVATE_KEY=YOUR_JWT_KEY_RUN_openssl_rand_-hex_32
+      - SEAFILE_LOG_TO_STDOUT=false
+      - ENABLE_GO_FILESERVER=true
+      # ── First-run only (ignored after initial setup) ──
+      - INIT_SEAFILE_ADMIN_EMAIL=admin@tustin.house
+      - INIT_SEAFILE_ADMIN_PASSWORD=YOUR_ADMIN_PASSWORD
+      # ── Notification server ──
+      - ENABLE_NOTIFICATION_SERVER=true
+      - INNER_NOTIFICATION_SERVER_URL=http://notification-server:8083
+      - NOTIFICATION_SERVER_URL=https://seafile.tustin.house/notification
+      # ── SeaDoc (disabled — add seadoc service if needed) ──
+      - ENABLE_SEADOC=false
+      # ── AI features (disabled) ──
+      - ENABLE_SEAFILE_AI=false
+      - ENABLE_FACE_RECOGNITION=false
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:80 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - seafile-net
+
+  # ── Notification Server ──────────────────────────────────────────────
+  notification-server:
+    image: seafileltd/notification-server:13.0-latest
+    container_name: seafile-notification-server
+    restart: unless-stopped
+    ports:
+      - "8083:8083"
+    volumes:
+      - /sharedfolders/dev/compose-data/seafile/data/seafile/logs:/shared/seafile/logs
+    environment:
+      - SEAFILE_MYSQL_DB_HOST=db
+      - SEAFILE_MYSQL_DB_PORT=3306
+      - SEAFILE_MYSQL_DB_USER=seafile
+      - SEAFILE_MYSQL_DB_PASSWORD=YOUR_DB_PASSWORD
+      - SEAFILE_MYSQL_DB_CCNET_DB_NAME=ccnet_db
+      - SEAFILE_MYSQL_DB_SEAFILE_DB_NAME=seafile_db
+      - JWT_PRIVATE_KEY=YOUR_JWT_KEY_RUN_openssl_rand_-hex_32
+      - SEAFILE_LOG_TO_STDOUT=false
+      - NOTIFICATION_SERVER_LOG_LEVEL=info
+    depends_on:
+      db:
+        condition: service_healthy
+      seafile:
+        condition: service_healthy
+    networks:
+      - seafile-net
+
+networks:
+  seafile-net:
+    name: seafile-net
