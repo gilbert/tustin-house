@@ -10,6 +10,7 @@ Build a home NAS for a friend. Requirements:
 - OpenMediaVault (OMV) 7 as NAS OS
 - Jellyfin for media streaming
 - Seafile for encrypted documents
+- Immich for continuous photo/video backup (Google Photos replacement)
 - Authentik for SSO
 - Cloudflare Tunnel for external access (no port forwarding)
 - Tailscale for admin SSH access
@@ -85,6 +86,7 @@ OMV shared folders are accessible at `/sharedfolders/[name]` within Docker conta
 |---|---|---|---|
 | Jellyfin | Media streaming | jellyfin.tustin.house | 8096 |
 | Seafile | Encrypted document storage | seafile.tustin.house | 8080 |
+| Immich | Photo/video backup | photos.tustin.house | 2283 |
 | Authentik | Single sign-on | auth.tustin.house | 9000 |
 | Nginx Proxy Manager | Reverse proxy | npm.tustin.house | 81 (admin), 80 (proxy) |
 | Cloudflare Tunnel | External access | — | — |
@@ -171,6 +173,44 @@ Seafile CE 13.0 with MariaDB 10.11, Redis, and notification server. Uses a dedic
 **NPM Advanced Config:** [`setup/seafile-npm-advanced.conf`](setup/seafile-npm-advanced.conf) — paste into the Advanced tab of the `seafile.tustin.house` proxy host.
 
 > NPM proxy host settings: Scheme `http`, Forward Host `127.0.0.1`, Forward Port `8080`. Enable "Block Common Exploits" and "Websockets Support". SSL tab: select `*.tustin.house` wildcard cert, force SSL.
+
+### immich (⏳ Planned)
+
+Immich is a self-hosted Google Photos replacement with automatic mobile backup, ML-powered search, facial recognition, and map view. It uses PostgreSQL (with pgvecto.rs for vector search), Redis, and a machine learning container for smart features.
+
+**Architecture:** Dedicated bridge network (same pattern as Authentik and Seafile). Only port 2283 is published to the host. PostgreSQL and Redis are internal to the stack.
+
+**Deployment plan:**
+
+1. **Create compose file** — `setup/immich-docker-compose.yml` with:
+   - `immich-server` (main app, port 2283)
+   - `immich-machine-learning` (ML features — classification, facial recognition, CLIP search)
+   - `immich-postgres` (PostgreSQL 16 with pgvecto.rs extension)
+   - `immich-redis` (session/cache store)
+   - All on a dedicated `immich` bridge network; only port 2283 published
+
+2. **Volume permissions** — Immich runs as UID 1000. Human operator must:
+   ```bash
+   mkdir -p /sharedfolders/compose-data/immich/{upload,postgres,model-cache}
+   chown -R 1000:1000 /sharedfolders/compose-data/immich
+   ```
+
+3. **Photo storage** — Upload library stored at `/sharedfolders/compose-data/immich/upload`. Can also mount `/sharedfolders/photos` as an external library for existing photos already on the NAS.
+
+4. **NPM proxy host** — Add `photos.tustin.house`:
+   - Scheme `http`, Forward Host `127.0.0.1`, Forward Port `2283`
+   - Enable "Websockets Support" (required for real-time updates)
+   - SSL tab: select `*.tustin.house` wildcard cert, force SSL
+
+5. **Authentik SSO** — Immich supports OAuth2/OIDC natively:
+   - Create an OAuth2 provider in Authentik named `Immich`
+   - Redirect URI: `https://photos.tustin.house/auth/login`
+   - Create application with slug `immich`
+   - Configure in Immich admin: Administration → Settings → OAuth
+
+6. **Mobile app setup** — Users install the Immich mobile app (iOS/Android), set server URL to `https://photos.tustin.house`, and log in via SSO. Automatic background upload handles continuous backup.
+
+**Hardware note:** The 5800XT has 8 cores / 16 threads — plenty for Immich's ML workload (face detection, CLIP encoding) which runs on CPU. No GPU required; ML tasks will be slower than GPU-accelerated but fully functional.
 
 ---
 
@@ -301,6 +341,9 @@ claude
 | Seafile deployed | ✅ Done |
 | Seafile NPM proxy host configured | ✅ Done |
 | Seafile wired into Authentik SSO | ✅ Done |
+| Immich deployed | ⏳ Planned |
+| Immich NPM proxy host configured | ⏳ Planned |
+| Immich wired into Authentik SSO | ⏳ Planned |
 
 ---
 
@@ -313,6 +356,10 @@ claude
 5. ~~Wire Seafile into Authentik SSO~~ ✅
 6. ~~Create user accounts in Seafile~~ ✅ (handled by SSO — accounts auto-created on first login)
 7. Instruct users on creating encrypted libraries for sensitive documents
+8. Deploy Immich for photo/video backup
+9. Add `photos.tustin.house` proxy host in NPM
+10. Wire Immich into Authentik SSO
+11. Set up mobile app backup for users
 
 ---
 
