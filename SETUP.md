@@ -84,7 +84,7 @@ OMV shared folders are accessible at `/sharedfolders/[name]` within Docker conta
 | Service | Purpose | URL | Port |
 |---|---|---|---|
 | Jellyfin | Media streaming | jellyfin.tustin.house | 8096 |
-| Seafile | Encrypted document storage | seafile.tustin.house | TBD |
+| Seafile | Encrypted document storage | seafile.tustin.house | 8080 |
 | Authentik | Single sign-on | auth.tustin.house | 9000 |
 | Nginx Proxy Manager | Reverse proxy | npm.tustin.house | 81 (admin), 80 (proxy) |
 | Cloudflare Tunnel | External access | — | — |
@@ -119,10 +119,11 @@ Tailscale → direct SSH to NAS (admin only)
 
 ### Proxy Hosts Configured
 
-| Domain | Forward Port | SSL |
-|---|---|---|
-| jellyfin.tustin.house | 8096 | Wildcard cert |
-| auth.tustin.house | 9000 | Wildcard cert |
+| Domain | Forward Port | SSL | Notes |
+|---|---|---|---|
+| jellyfin.tustin.house | 8096 | Wildcard cert | |
+| auth.tustin.house | 9000 | Wildcard cert | |
+| seafile.tustin.house | 8080 | Wildcard cert | Advanced tab config required (see seafile section) |
 
 > Use wildcard cert for all new proxy hosts — no need to request new certs.
 
@@ -257,9 +258,26 @@ chown -R 999:999 /sharedfolders/dev/compose/authentik/db   # postgres
 
 **First-time setup:** Visit `https://auth.tustin.house/if/flow/initial-setup/` to create the admin account. This URL is only valid once — if already visited, just log in normally.
 
-### seafile (⏳ Not yet planned — deploy after Jellyfin SSO confirmed)
+### seafile (✅ Running)
 
-TBD — will use Seafile CE Docker image. Provides encrypted document libraries with client-side encryption. Multiple user accounts supported natively. Use a dedicated bridge network (same pattern as authentik) — do not expose postgres on host.
+Seafile CE 13.0 with MariaDB 10.11, Redis, and notification server. Uses a dedicated bridge network — only port 8080 (Seafile's internal nginx) and 8083 (notification server WebSocket) are published to the host. MariaDB and Redis are internal only.
+
+**Key architecture notes (Seafile 13):**
+- The `seafileltd/seafile-mc:13.0-latest` image runs its own internal nginx — only port 80 needs to be published (mapped to 8080 on host). All paths (`/seafhttp`, `/seafdav`, `/notification`) are proxied internally.
+- The notification server is a separate container (`seafileltd/notification-server:13.0-latest`) configured via environment variables (not config file mounts).
+- Both the main seafile container and notification-server must share the same `JWT_PRIVATE_KEY`.
+- MariaDB uses a healthcheck with `condition: service_healthy` to prevent "mysql is not ready" bootstrap failures.
+- `ENABLE_GO_FILESERVER=true` enables the Go-based file server (faster than the legacy Python one).
+
+**Compose file:** [`setup/seafile-docker-compose.yml`](setup/seafile-docker-compose.yml)
+
+> Generate JWT key with: `openssl rand -hex 32`
+> Same JWT key must be used in both `seafile` and `notification-server` containers.
+> `INIT_*` env vars are only used on first bootstrap — they are ignored on subsequent starts.
+
+**NPM Advanced Config:** [`setup/seafile-npm-advanced.conf`](setup/seafile-npm-advanced.conf) — paste into the Advanced tab of the `seafile.tustin.house` proxy host.
+
+> NPM proxy host settings: Scheme `http`, Forward Host `127.0.0.1`, Forward Port `8080`. Enable "Block Common Exploits" and "Websockets Support". SSL tab: select `*.tustin.house` wildcard cert, force SSL.
 
 ---
 
@@ -362,7 +380,8 @@ claude
 | `ai` user created for Claude Code on NAS | ✅ Done |
 | Claude Code installed on NAS | ✅ Done |
 | Jellyfin SSO login button on login page | ✅ Done |
-| Seafile deployed | ⏳ Pending |
+| Seafile deployed | ✅ Done |
+| Seafile NPM proxy host configured | ✅ Done |
 | Seafile wired into Authentik SSO | ⏳ Pending |
 
 ---
@@ -371,13 +390,11 @@ claude
 
 1. ~~Install Claude Code on the NAS~~ ✅
 2. ~~Add SSO login button to Jellyfin login page~~ ✅
-3. Deploy Seafile:
-   1. Create a dedicated bridge network (same pattern as authentik stack)
-   2. Deploy Seafile CE Docker image with its own postgres instance on that bridge network
-   3. Add `seafile.tustin.house` proxy host in NPM pointing to Seafile's port (use wildcard cert)
-   4. Wire Seafile into Authentik SSO
-   5. Create user accounts
-   6. Instruct users on creating encrypted libraries for sensitive documents
+3. ~~Deploy Seafile~~ ✅
+4. ~~Add `seafile.tustin.house` proxy host in NPM~~ ✅
+5. Wire Seafile into Authentik SSO (OAuth2, same pattern as Jellyfin)
+6. Create user accounts in Seafile
+7. Instruct users on creating encrypted libraries for sensitive documents
 
 ---
 
@@ -392,8 +409,9 @@ claude
 - Default OMV web login: `admin / openmediavault` — already changed.
 - Default SSH login: `root` + password set during install.
 - fTPM prompt on boot: press N (twice if needed). Can be permanently disabled in BIOS under Advanced → AMD fTPM configuration → Disabled.
-- Jellyfin and NPM use `network_mode: host`. Services with internal dependencies (Authentik, and future Seafile) use dedicated bridge networks with only the necessary port published to the host.
+- Jellyfin and NPM use `network_mode: host`. Services with internal dependencies (Authentik, Seafile) use dedicated bridge networks with only the necessary ports published to the host.
 - Cloudflare tunnel handles TLS termination externally; internal traffic is HTTP.
 - NPM wildcard cert covers all current and future `*.tustin.house` subdomains — select it when adding new proxy hosts, no need to request new certs.
-- When deploying new services that need postgres: always use a dedicated bridge network per stack, never `network_mode: host` for the database. This avoids port 5432 conflicts between stacks.
+- When deploying new services that need a database: always use a dedicated bridge network per stack, never `network_mode: host` for the database. This avoids port conflicts between stacks.
 - Docker volume permissions: authentik-server/worker run as UID 1000, postgres as UID 999. `chown` the host paths before first start or gunicorn/postgres will fail with permission errors.
+- Seafile 13 has its own internal nginx — only publish port 80 (mapped to 8080 on host). Don't publish individual service ports (8082, 8000, etc.) — the internal nginx handles routing.
