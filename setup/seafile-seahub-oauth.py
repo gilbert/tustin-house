@@ -25,8 +25,14 @@ OAUTH_USER_INFO_URL = "https://auth.tustin.house/application/o/userinfo/"
 
 OAUTH_SCOPE = ["openid", "profile", "email"]
 
+# Map OIDC "email" claim to Seafile's internal "email" field.
+# This lets Seafile match SSO logins to existing accounts by email address
+# (e.g., akadmin SSO → admin@tustin.house gets linked automatically).
+# Do NOT map to "uid" — that breaks the old-user matching path in oauth/views.py.
 OAUTH_ATTRIBUTE_MAP = {
-    "email": (True, "contact_email"),
+    "email": (True, "email"),
     "name": (False, "name"),
-    "sub": (True, "uid"),
 }
+
+# === Login page customization ===
+ENABLE_BRANDING_CSS = True
