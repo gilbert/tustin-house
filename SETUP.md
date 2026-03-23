@@ -175,43 +175,19 @@ Seafile CE 13.0 with MariaDB 10.11, Redis, and notification server. Uses a dedic
 
 > NPM proxy host settings: Scheme `http`, Forward Host `127.0.0.1`, Forward Port `8080`. Enable "Block Common Exploits" and "Websockets Support". SSL tab: select `*.tustin.house` wildcard cert, force SSL.
 
-### immich (⏳ Planned)
+### immich (✅ Running)
 
-Immich is a self-hosted Google Photos replacement with automatic mobile backup, ML-powered search, facial recognition, and map view. It uses PostgreSQL (with pgvecto.rs for vector search), Redis, and a machine learning container for smart features.
+Immich is a self-hosted Google Photos replacement with automatic mobile backup, ML-powered search, facial recognition, and map view. Uses PostgreSQL (with vectorchord/pgvectors for vector search), Redis (Valkey), and a machine learning container.
 
-**Architecture:** Dedicated bridge network (same pattern as Authentik and Seafile). Only port 2283 is published to the host. PostgreSQL and Redis are internal to the stack.
+**Architecture:** Dedicated bridge network (same pattern as Authentik and Seafile). Only port 2283 is published to the host. PostgreSQL and Redis are internal to the stack. `DB_STORAGE_TYPE=HDD` is set to tune PostgreSQL for rotational media (WD Red Pro).
 
-**Deployment plan:**
+**Compose file:** [`setup/immich-docker-compose.yml`](setup/immich-docker-compose.yml)
 
-1. **Create compose file** — `setup/immich-docker-compose.yml` with:
-   - `immich-server` (main app, port 2283)
-   - `immich-machine-learning` (ML features — classification, facial recognition, CLIP search)
-   - `immich-postgres` (PostgreSQL 16 with pgvecto.rs extension)
-   - `immich-redis` (session/cache store)
-   - All on a dedicated `immich` bridge network; only port 2283 published
+**Image tags:** Immich requires full semver tags (e.g., `v2.6.1`). Short tags like `v2.6` or rolling tags like `release` do not exist on ghcr.io.
 
-2. **Volume permissions** — Immich runs as UID 1000. Human operator must:
-   ```bash
-   mkdir -p /sharedfolders/compose-data/immich/{upload,postgres,model-cache}
-   chown -R 1000:1000 /sharedfolders/compose-data/immich
-   ```
+**Hardware note:** ML runs on CPU (8c/16t Ryzen 5800XT). Face detection, CLIP encoding work fine — just slower than GPU-accelerated. RX 550 is too old for ROCm.
 
-3. **Photo storage** — Upload library stored at `/sharedfolders/compose-data/immich/upload`. Can also mount `/sharedfolders/photos` as an external library for existing photos already on the NAS.
-
-4. **NPM proxy host** — Add `photos.tustin.house`:
-   - Scheme `http`, Forward Host `127.0.0.1`, Forward Port `2283`
-   - Enable "Websockets Support" (required for real-time updates)
-   - SSL tab: select `*.tustin.house` wildcard cert, force SSL
-
-5. **Authentik SSO** — Immich supports OAuth2/OIDC natively:
-   - Create an OAuth2 provider in Authentik named `Immich`
-   - Redirect URI: `https://photos.tustin.house/auth/login`
-   - Create application with slug `immich`
-   - Configure in Immich admin: Administration → Settings → OAuth
-
-6. **Mobile app setup** — Users install the Immich mobile app (iOS/Android), set server URL to `https://photos.tustin.house`, and log in via SSO. Automatic background upload handles continuous backup.
-
-**Hardware note:** The 5800XT has 8 cores / 16 threads — plenty for Immich's ML workload (face detection, CLIP encoding) which runs on CPU. No GPU required; ML tasks will be slower than GPU-accelerated but fully functional.
+> NPM proxy host: `photos.tustin.house` → `http://127.0.0.1:2283`. Enable "Websockets Support". SSL tab: select `*.tustin.house` wildcard cert.
 
 ---
 
@@ -265,14 +241,40 @@ Seafile is wired into Authentik via OAuth2/OIDC, configured in `seahub_settings.
 - **OAuth reference config:** [`setup/seafile-seahub-oauth.py`](setup/seafile-seahub-oauth.py)
 - **Auto-create users:** ✅ (`OAUTH_CREATE_UNKNOWN_USER = True`)
 - **Auto-activate users:** ✅ (`OAUTH_ACTIVATE_USER_AFTER_CREATION = True`)
-- **Attribute mapping:** Authentik `sub` → Seafile `uid` (required), `email` → `contact_email` (required), `name` → `name` (optional)
+- **Attribute mapping:** Authentik `email` → Seafile `email` (required), `name` → `name` (optional)
 
-The login page shows a **"Single Sign-On"** button. Users click it, authenticate via Authentik, and a Seafile account is auto-created on first login.
+**Account linking:** The `email` claim is mapped to Seafile's internal `email` field (not `uid`). This lets SSO logins match existing Seafile accounts by email address — e.g., the Authentik `akadmin` account (email `admin@tustin.house`) automatically links to the Seafile admin account. Do NOT map `sub` → `uid` — that creates orphaned `@auth.local` accounts because it bypasses the old-user matching path in `seahub/oauth/views.py`.
+
+**Login page customization (✅ Done):** Password login is hidden via custom CSS (`ENABLE_BRANDING_CSS = True`). The CSS is set via the admin API (`PUT /api/v2.1/admin/web-settings/` with `CUSTOM_CSS` key). The login page shows only the SSO button — `#login-form` is hidden with `display: none !important`.
 
 ### Adding new users to Seafile
 1. Create the user in Authentik (Directory → Users → Create) with username, email, and password
 2. User visits https://seafile.tustin.house and clicks "Single Sign-On"
-3. Seafile account is auto-created on first SSO login
+3. Seafile account is auto-created on first SSO login (matched by email if account already exists)
+
+---
+
+## Immich SSO (✅ Configured)
+
+Immich is wired into Authentik via OAuth2/OIDC, configured through the Immich System Config API.
+
+### Authentik side
+- **Provider:** OAuth2/OpenID Connect, named `Immich`
+- **Redirect URI:** `https://photos.tustin.house/auth/login`
+- **Application:** slug `immich`, linked to above provider
+
+### Immich side
+- **Configuration:** Set via API (`PUT /api/system-config` with `x-api-key` header)
+- **OAuth enabled:** ✅
+- **Auto-register:** ✅ (SSO users get Immich accounts automatically)
+- **Issuer URL:** `https://auth.tustin.house/application/o/immich/`
+- **Button text:** `Login with Authentik`
+
+**Account linking:** Immich matches SSO logins to existing accounts by email. The Authentik `akadmin` account (email `admin@tustin.house`) automatically linked to the Immich admin account on first SSO login.
+
+**Password login disabled (✅ Done):** `passwordLogin.enabled` is set to `false` via the System Config API, completely hiding the email/password form. Only the OAuth button is shown on the login page.
+
+**API key:** Generated in Immich admin UI (User → API Keys). Used with `x-api-key` header for system config changes.
 
 ---
 
@@ -342,9 +344,12 @@ claude
 | Seafile deployed | ✅ Done |
 | Seafile NPM proxy host configured | ✅ Done |
 | Seafile wired into Authentik SSO | ✅ Done |
-| Immich deployed | ⏳ Planned |
-| Immich NPM proxy host configured | ⏳ Planned |
-| Immich wired into Authentik SSO | ⏳ Planned |
+| Seafile SSO-only login page | ✅ Done |
+| Immich deployed | ✅ Done |
+| Immich NPM proxy host configured | ✅ Done |
+| Immich wired into Authentik SSO | ✅ Done |
+| Immich SSO-only login page (password login disabled) | ✅ Done |
+| Jellyfin SSO account linked to admin | ⏳ Planned |
 
 ---
 
@@ -357,10 +362,11 @@ claude
 5. ~~Wire Seafile into Authentik SSO~~ ✅
 6. ~~Create user accounts in Seafile~~ ✅ (handled by SSO — accounts auto-created on first login)
 7. Instruct users on creating encrypted libraries for sensitive documents
-8. Deploy Immich for photo/video backup
-9. Add `photos.tustin.house` proxy host in NPM
-10. Wire Immich into Authentik SSO
-11. Set up mobile app backup for users
+8. ~~Deploy Immich for photo/video backup~~ ✅
+9. ~~Add `photos.tustin.house` proxy host in NPM~~ ✅
+10. ~~Wire Immich into Authentik SSO~~ ✅
+11. Link Jellyfin SSO `akadmin` account to the Jellyfin admin account (same pattern as Immich/Seafile)
+12. Set up mobile app backup for users
 
 ---
 
