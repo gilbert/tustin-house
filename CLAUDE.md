@@ -43,7 +43,7 @@ When running locally (e.g., on a laptop against this repo), these restrictions d
 
 ## Key Constraints
 
-- The 5800XT has no iGPU — motherboard video outputs are non-functional. NAS is headless.
+- The 5800XT has no iGPU. A PowerColor RX 550 2GB (Polaris/GCN 4.0) provides display output but is too old for ROCm (needs RDNA 2+). Immich ML runs on CPU. NAS is headless.
 - WD Red Pro 10TB draws 12V @ 1.9A peak — this is why the original Radxa SATA HAT burned out.
 - Docker volume permissions: Authentik server/worker run as UID 1000, postgres as UID 999. Must `chown` host paths before first start.
 - NPM wildcard cert covers all `*.tustin.house` subdomains — select it when adding proxy hosts, don't request new certs.

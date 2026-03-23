@@ -1,5 +1,5 @@
 # Immich — self-hosted Google Photos replacement
-# Based on official compose from github.com/immich-app/immich (v2.6)
+# Based on official compose from github.com/immich-app/immich
 #
 # Dedicated bridge network (same pattern as Authentik and Seafile).
 # Only port 2283 is published to the host.
@@ -22,7 +22,7 @@ services:
 
   # ── Immich Server ─────────────────────────────────────────────────────
   immich-server:
-    image: ghcr.io/immich-app/immich-server:v2.6
+    image: ghcr.io/immich-app/immich-server:v2.6.1
     container_name: immich-server
     restart: always
     ports:
@@ -51,7 +51,7 @@ services:
   # Runs on CPU (5800XT has no iGPU, no discrete GPU in this build).
   # ML tasks (face detection, CLIP encoding) work fine on 8c/16t, just slower.
   immich-machine-learning:
-    image: ghcr.io/immich-app/immich-machine-learning:v2.6
+    image: ghcr.io/immich-app/immich-machine-learning:v2.6.1
     container_name: immich-machine-learning
     restart: always
     volumes:

@@ -26,12 +26,13 @@ Build a home NAS for a friend. Requirements:
 | RAM | G.Skill Ripjaws V 16GB (2x8GB) DDR4-3200 | Included in Micro Center bundle |
 | Boot Drive | 256GB M.2 NVMe SSD | OS only, installed in M.2 slot |
 | Storage Drive | WD Red Pro 10TB 3.5" HDD (WD103KFBX) | 12V peak 1.9A |
+| GPU | PowerColor AMD Radeon RX 550 2GB GDDR5 (PCIe 3.0) | Display output only — too old for ROCm (Polaris/GCN 4.0, need RDNA 2+) |
 | Case | Fractal Design Node 804 (FD-CA-NODE-804-BL-W) | 8x 3.5" bays, no hot-swap |
 | PSU | be quiet! Pure Power 13 M 650W (fully modular, 80+ Gold) | Standard ATX |
 
 **Bundle:** Motherboard + CPU + RAM purchased at Micro Center for $299.
 
-**Critical hardware note:** The 5800XT has NO iGPU. Motherboard HDMI/DP outputs are non-functional with this CPU. A borrowed discrete GPU in the PCIe x16 slot is used for initial setup only. NAS runs headless in normal operation.
+**Critical hardware note:** The 5800XT has NO iGPU. A PowerColor RX 550 2GB sits in the PCIe x16 slot for display output. The RX 550 is Polaris (GCN 4.0) — not usable for GPU-accelerated ML (ROCm requires RDNA 2 / RX 6000+). Immich ML runs on CPU. NAS runs headless in normal operation.
 
 ---
 
