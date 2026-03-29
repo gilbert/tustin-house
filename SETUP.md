@@ -116,9 +116,12 @@ Tailscale → direct SSH to NAS (admin only)
 | Subdomain | Domain | Type | URL |
 |---|---|---|---|
 | * | tustin.house | HTTP | localhost:80 |
+| *(empty)* | tustin.house | HTTP | localhost:80 |
 
 > Wildcard `*` subdomain points at NPM on port 80. NPM handles internal routing to each service.
 > Add new proxy hosts in NPM when deploying new services — no new Cloudflare tunnel entries needed.
+
+**Root domain note:** The wildcard `*` route does **not** match the bare apex domain `tustin.house` — it only matches subdomains like `jellyfin.tustin.house`. A separate tunnel public hostname with an empty subdomain is required for `https://tustin.house` to resolve. When adding this route via the Cloudflare Zero Trust dashboard, the tunnel will auto-create the corresponding DNS CNAME record. If you get an error about a conflicting DNS record, delete the existing root DNS record first, then add the tunnel route (it recreates the CNAME automatically).
 
 **DNS note:** The wildcard `*.tustin.house` DNS record covers all subdomains via the tunnel. Safari (and some browsers) may cache old DNS — clear DNS cache if a subdomain works in one browser but not another.
 
@@ -127,7 +130,7 @@ Tailscale → direct SSH to NAS (admin only)
 ## Nginx Proxy Manager
 
 - **Admin UI:** http://192.168.0.113:81
-- **Wildcard SSL cert:** `*.tustin.house` + `tustin.house` via Cloudflare DNS challenge
+- **SSL certs:** Wildcard `*.tustin.house` + `tustin.house` via Cloudflare DNS challenge (covers all subdomains), plus a separate cert for the root `tustin.house` domain
 - **API token:** Cloudflare DNS challenge token saved in NPM
 
 ### Proxy Hosts Configured
@@ -425,3 +428,4 @@ Look for `TCP_DENIED` to find domains that need to be added to the whitelist.
 - When deploying new services that need a database: always use a dedicated bridge network per stack, never `network_mode: host` for the database. This avoids port conflicts between stacks.
 - Docker volume permissions: authentik-server/worker run as UID 1000, postgres as UID 999. `chown` the host paths before first start or gunicorn/postgres will fail with permission errors.
 - Seafile 13 has its own internal nginx — only publish port 80 (mapped to 8080 on host). Don't publish individual service ports (8082, 8000, etc.) — the internal nginx handles routing.
+- **NVMe boot drive capacity planning:** The 221 GB boot drive hosts service configs, databases, and caches. Main consumers that grow over time: Immich postgres (~5-10 KB per photo, ~1 GB at 100K photos), Jellyfin image cache (a few GB for a large library), and Jellyfin transcode temp files (up to several GB per active stream, cleaned up when playback stops). If transcode temp usage becomes a concern, either enable "Throttle transcodes" in Jellyfin Dashboard → Playback → Transcoding, or move the transcode temp directory to the HDD in the same settings page.
