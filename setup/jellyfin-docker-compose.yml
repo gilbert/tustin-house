@@ -6,9 +6,9 @@ services:
     volumes:
       - /sharedfolders/dev/config/jellyfin:/config
       - /sharedfolders/dev/cache/jellyfin:/cache
-      - /hdd-almond-10tb/movies:/media/movies
-      - /hdd-almond-10tb/tv:/media/tv
-      - /hdd-almond-10tb/music:/media/music
-      - /hdd-almond-10tb/photos:/media/photos
-      - /hdd-almond-10tb/videos:/media/videos
+      - /hdd-almond-10tb/media/movies:/media/movies
+      - /hdd-almond-10tb/media/tv:/media/tv
+      - /hdd-almond-10tb/media/music:/media/music
+      - /hdd-almond-10tb/media/photos:/media/photos
+      - /hdd-almond-10tb/media/videos:/media/videos
     restart: unless-stopped
