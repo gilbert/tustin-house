@@ -321,6 +321,26 @@ ssh ai@tustinhouse.local
 claude
 ```
 
+### Network sandbox (squid proxy)
+
+Outbound network access for the `ai` user is restricted by a squid proxy whitelist. Only domains listed in `setup/squid.conf` are allowed. All other requests are denied.
+
+**Updating the whitelist:**
+1. Edit `setup/squid.conf` — add domains to the `claude_domains` ACL
+2. Copy to NAS and reload: `scp setup/squid.conf root@100.64.168.29:/etc/squid/squid.conf && ssh root@100.64.168.29 "systemctl reload squid"`
+
+**Monitoring blocked requests** (useful when Claude Code auth or features break):
+```bash
+# Watch denied requests in real-time
+ssh root@100.64.168.29 "tail -f /var/log/squid/access.log" | grep TCP_DENIED
+
+# Watch all requests (allowed + denied)
+ssh root@100.64.168.29 "tail -f /var/log/squid/access.log"
+```
+
+Squid log fields: `timestamp elapsed_ms client_ip result_code/status_code bytes method url ...`
+Look for `TCP_DENIED` to find domains that need to be added to the whitelist.
+
 ### What `ai` can do
 - Read/write compose files in `/sharedfolders/compose/`
 - Run `docker` and `docker compose` commands
