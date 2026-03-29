@@ -53,7 +53,7 @@ services:
     ports:
       - "8080:80"
     volumes:
-      - /sharedfolders/dev/compose-data/seafile/data:/shared
+      - /hdd-almond-10tb/seafile:/shared
     environment:
       # ── Database ──
       - SEAFILE_MYSQL_DB_HOST=db
@@ -111,7 +111,7 @@ services:
     ports:
       - "8083:8083"
     volumes:
-      - /sharedfolders/dev/compose-data/seafile/data/seafile/logs:/shared/seafile/logs
+      - /hdd-almond-10tb/seafile/seafile/logs:/shared/seafile/logs
     environment:
       - SEAFILE_MYSQL_DB_HOST=db
       - SEAFILE_MYSQL_DB_PORT=3306

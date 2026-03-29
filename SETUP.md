@@ -60,24 +60,34 @@ Build a home NAS for a friend. Requirements:
 
 ## Storage Layout
 
-- **Boot:** NVMe SSD → OMV OS only
-- **Data:** WD Red Pro 10TB → mounted at `/srv/dev-disk-by-uuid-e9c634f8-8446-427e-b520-fd71dd239cac/`
-- **Filesystem:** ext4, mounted via OMV
+### Drives
 
-### Shared Folders (all on WD Red Pro via OMV)
+| Device | Size | Symlink | Mount Point | Role |
+|---|---|---|---|---|
+| `/dev/nvme0n1p2` | 221 GB | — | `/` | Boot drive (NVMe SSD) — OS, service configs, databases |
+| `/dev/sda1` | 9.1 TB | `/hdd-almond-10tb` | `/srv/dev-disk-by-uuid-e9c634f8-8446-427e-b520-fd71dd239cac` | Data drive (WD Red Pro) — user media, uploads, documents |
+| `/dev/sdb` | 931 GB | — | not mounted | Old Windows drive (WD Blue), not yet formatted for OMV |
 
-| Name | Path |
-|---|---|
-| movies | dev/movies/ |
-| tv | dev/tv/ |
-| music | dev/music/ |
-| photos | dev/photos/ |
-| videos | dev/videos/ |
-| documents | dev/documents/ |
-| compose | dev/compose/ |
-| compose-data | dev/compose-data/ |
+### Design Principle
 
-OMV shared folders are accessible at `/sharedfolders/[name]` within Docker containers.
+**Bulk user data** (media, photos, documents) lives on the 10 TB HDD. **Service configs and databases** stay on the NVMe boot drive — they're small, benefit from SSD speed, and survive an HDD swap.
+
+### What lives where
+
+| Data | Drive | Path |
+|---|---|---|
+| Movies, TV, Music, Photos, Videos | HDD (9.1 TB) | `/hdd-almond-10tb/{movies,tv,music,photos,videos}/` |
+| Immich photo/video uploads | HDD (9.1 TB) | `/hdd-almond-10tb/immich/` |
+| Seafile user documents | HDD (9.1 TB) | `/hdd-almond-10tb/seafile/` |
+| Immich PostgreSQL DB | NVMe (221 GB) | `/sharedfolders/compose-data/immich/postgres/` |
+| Seafile MariaDB | NVMe (221 GB) | `/sharedfolders/dev/compose-data/seafile/db/` |
+| Authentik (postgres, config) | NVMe (221 GB) | `/sharedfolders/dev/compose/authentik/` |
+| NPM (config, certs) | NVMe (221 GB) | `/sharedfolders/dev/compose/nginx-proxy-manager/` |
+| Jellyfin config/cache | NVMe (221 GB) | `/sharedfolders/dev/{config,cache}/jellyfin/` |
+| Compose files | NVMe (221 GB) | `/sharedfolders/compose/` |
+| Landing page | NVMe (221 GB) | `/sharedfolders/compose/landing-page/` |
+
+> **Note on `/sharedfolders/`:** OMV's bind mount feature for shared folders has been disabled by default since OMV 5.3.3 (conflicts with Docker). The `/sharedfolders/` paths are plain directories on the NVMe boot drive, not bind mounts to the HDD. Services that need HDD storage use `/hdd-almond-10tb/` (a symlink to the HDD's long UUID mount path) directly in their compose volumes.
 
 ---
 
@@ -179,7 +189,7 @@ Seafile CE 13.0 with MariaDB 10.11, Redis, and notification server. Uses a dedic
 
 Immich is a self-hosted Google Photos replacement with automatic mobile backup, ML-powered search, facial recognition, and map view. Uses PostgreSQL (with vectorchord/pgvectors for vector search), Redis (Valkey), and a machine learning container.
 
-**Architecture:** Dedicated bridge network (same pattern as Authentik and Seafile). Only port 2283 is published to the host. PostgreSQL and Redis are internal to the stack. `DB_STORAGE_TYPE=HDD` is set to tune PostgreSQL for rotational media (WD Red Pro).
+**Architecture:** Dedicated bridge network (same pattern as Authentik and Seafile). Only port 2283 is published to the host. PostgreSQL and Redis are internal to the stack. Uploads live on the 10 TB HDD (`/hdd-almond-10tb/immich`), PostgreSQL stays on NVMe (`DB_STORAGE_TYPE=SSD`).
 
 **Compose file:** [`setup/immich-docker-compose.yml`](setup/immich-docker-compose.yml)
 
@@ -244,7 +254,7 @@ Seafile is wired into Authentik via OAuth2/OIDC, configured in `seahub_settings.
 - **Application:** slug `seafile`, linked to above provider
 
 ### Seafile side
-- **Config file:** `/shared/seafile/conf/seahub_settings.py` inside the `seafile` container (host path: `/sharedfolders/dev/compose-data/seafile/data/seafile/conf/seahub_settings.py`)
+- **Config file:** `/shared/seafile/conf/seahub_settings.py` inside the `seafile` container (host path: `/hdd-almond-10tb/seafile/seafile/conf/seahub_settings.py`)
 - **OAuth reference config:** [`setup/seafile-seahub-oauth.py`](setup/seafile-seahub-oauth.py)
 - **Auto-create users:** ✅ (`OAUTH_CREATE_UNKNOWN_USER = True`)
 - **Auto-activate users:** ✅ (`OAUTH_ACTIVATE_USER_AFTER_CREATION = True`)
@@ -377,6 +387,7 @@ Look for `TCP_DENIED` to find domains that need to be added to the whitelist.
 | Immich wired into Authentik SSO | ✅ Done |
 | Immich SSO-only login page (password login disabled) | ✅ Done |
 | Jellyfin SSO account linked to admin | ✅ Done |
+| Storage migration: bulk data on HDD, configs/DBs on NVMe | ✅ Done |
 
 ---
 
@@ -403,7 +414,7 @@ Look for `TCP_DENIED` to find domains that need to be added to the whitelist.
 - 5800XT has NO iGPU — motherboard video outputs are dead with this CPU. Fine for headless NAS.
 - B550M DS3H AC R2 has 4x SATA (not 6). Add PCIe SATA expansion card (~$25) to go beyond 4 drives.
 - Node 804 drive bays: no hot-swap, screw-mount trays. Fine for cold storage NAS use.
-- Boot NVMe is OS only — all data lives on WD Red Pro.
+- Boot NVMe holds OS + service configs/databases. Bulk user data (media, uploads, documents) lives on the WD Red Pro HDD via `/hdd-almond-10tb/`.
 - OMV is Debian-based — all standard Debian/Linux commands work over SSH.
 - Default OMV web login: `admin / openmediavault` — already changed.
 - Default SSH login: `root` + password set during install.

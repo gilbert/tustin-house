@@ -5,8 +5,9 @@
 # Only port 2283 is published to the host.
 #
 # Volume permissions (required on first deploy — needs root):
-#   mkdir -p /sharedfolders/compose-data/immich/{upload,postgres}
-#   chown -R 1000:1000 /sharedfolders/compose-data/immich
+#   mkdir -p /hdd-almond-10tb/immich
+#   chown -R 1000:1000 /hdd-almond-10tb/immich
+#   mkdir -p /sharedfolders/compose-data/immich/postgres
 #
 # NPM proxy host: photos.tustin.house → http://127.0.0.1:2283
 #   Enable "Websockets Support". SSL tab: select *.tustin.house wildcard cert.
@@ -15,8 +16,8 @@
 #   openssl rand -base64 24 | tr -d '+/='
 # Replace every YOUR_DB_PASSWORD below with the same value.
 #
-# The DB is on HDDs (WD Red Pro), so DB_STORAGE_TYPE=HDD is set below
-# to tune PostgreSQL for rotational media.
+# Uploads live on the 10TB HDD (/hdd-almond-10tb/immich).
+# PostgreSQL stays on NVMe for speed, so DB_STORAGE_TYPE=SSD.
 
 services:
 
@@ -28,7 +29,7 @@ services:
     ports:
       - "2283:2283"
     volumes:
-      - /sharedfolders/compose-data/immich/upload:/data
+      - /hdd-almond-10tb/immich:/data
       - /etc/localtime:/etc/localtime:ro
     environment:
       - DB_HOSTNAME=immich-postgres
@@ -80,7 +81,7 @@ services:
       - POSTGRES_USER=postgres
       - POSTGRES_DB=immich
       - POSTGRES_INITDB_ARGS=--data-checksums
-      - DB_STORAGE_TYPE=HDD
+      - DB_STORAGE_TYPE=SSD
     volumes:
       - /sharedfolders/compose-data/immich/postgres:/var/lib/postgresql/data
     healthcheck:

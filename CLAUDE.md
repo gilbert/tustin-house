@@ -20,8 +20,17 @@ All services run as Docker Compose stacks managed via OMV (files live on the NAS
 ## Architecture Patterns
 
 - Services without internal dependencies (Jellyfin, NPM, cloudflared) use `network_mode: host`
-- Services with databases (Authentik, future Seafile) use dedicated bridge networks per stack — only the app port is published. Never use `network_mode: host` for postgres/redis to avoid port conflicts between stacks.
+- Services with databases (Authentik, Seafile, Immich) use dedicated bridge networks per stack — only the app port is published. Never use `network_mode: host` for postgres/redis to avoid port conflicts between stacks.
 - All subdomains route: Internet → Cloudflare Tunnel → NPM (port 80) → service. New services only need a proxy host in NPM using the existing wildcard SSL cert.
+
+## Storage Layout
+
+Bulk user data lives on the 10 TB HDD; service configs and databases stay on the NVMe boot drive.
+
+- **HDD** (`/hdd-almond-10tb/` → symlink to `/srv/dev-disk-by-uuid-e9c634f8-...`): media libraries, Immich uploads, Seafile documents
+- **NVMe** (`/sharedfolders/`): compose files, service configs, databases (Immich postgres, Seafile MariaDB, Authentik postgres)
+
+When adding new services: use `/hdd-almond-10tb/` paths for user data volumes, `/sharedfolders/` for configs and databases.
 
 ## Jellyfin SSO Login Page
 
