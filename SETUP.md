@@ -95,7 +95,7 @@ Build a home NAS for a friend. Requirements:
 
 | Service | Purpose | URL | Port |
 |---|---|---|---|
-| Jellyfin | Media streaming | jellyfin.tustin.house | 8096 |
+| Jellyfin | Media streaming | watch.tustin.house | 8096 |
 | Seafile | Encrypted document storage | seafile.tustin.house | 8080 |
 | Immich | Photo/video backup | photos.tustin.house | 2283 |
 | Authentik | Single sign-on | auth.tustin.house | 9000 |
@@ -134,7 +134,7 @@ Tailscale → direct SSH to NAS (admin only)
 
 | Domain | Forward Port | SSL | Notes |
 |---|---|---|---|
-| jellyfin.tustin.house | 8096 | Wildcard cert | |
+| watch.tustin.house | 8096 | Wildcard cert | |
 | auth.tustin.house | 9000 | Wildcard cert | |
 | seafile.tustin.house | 8080 | Wildcard cert | Advanced tab config required (see seafile section) |
 
@@ -207,19 +207,19 @@ Jellyfin is wired into Authentik via the Jellyfin SSO plugin using OAuth2/OIDC.
 
 ### Authentik side
 - **Provider:** OAuth2/OpenID, type `Confidential`, named `Jellyfin`
-- **Redirect URI:** `https://jellyfin.tustin.house/sso/OID/redirect/authentik`
+- **Redirect URI:** `https://watch.tustin.house/sso/OID/redirect/authentik`
 - **Application:** slug `jellyfin`, linked to above provider
 
 ### Jellyfin side
 - **Plugin:** SSO Authentication (installed via Dashboard → Plugins → Catalog)
 - **Provider name:** `authentik`
 - **OIDC endpoint:** `https://auth.tustin.house/application/o/jellyfin/`
-- **Base URL:** `https://jellyfin.tustin.house` ← critical: must be `https://` or redirect URI mismatch occurs
+- **Base URL:** `https://watch.tustin.house` ← critical: must be `https://` or redirect URI mismatch occurs
 - **Enable authorization:** ❌ (must be disabled — see account linking note below)
 - **Enable folder creation:** ✅ (auto-creates Jellyfin user on first SSO login)
 - **OIDC scopes:** `openid`, `profile`, `email`, `groups`
 
-**SSO login URL:** `https://jellyfin.tustin.house/sso/OID/start/authentik`
+**SSO login URL:** `https://watch.tustin.house/sso/OID/start/authentik`
 
 **Account linking:** Unlike Immich/Seafile (which match SSO logins to existing accounts by email), the Jellyfin SSO plugin uses `CanonicalLinks` — explicit mappings from SSO username to Jellyfin user GUID stored in `SSO-Auth.xml`. The `akadmin` SSO identity is mapped to the `root` Jellyfin admin account (GUID `17c618b2-57cf-4e2c-8ed6-0483b0e62bd0`). To link a new SSO user to an existing Jellyfin account, add a `CanonicalLinks` entry mapping the Authentik username to the Jellyfin user's GUID.
 
