@@ -205,10 +205,17 @@ Jellyfin is wired into Authentik via the Jellyfin SSO plugin using OAuth2/OIDC.
 - **Provider name:** `authentik`
 - **OIDC endpoint:** `https://auth.tustin.house/application/o/jellyfin/`
 - **Base URL:** `https://jellyfin.tustin.house` ← critical: must be `https://` or redirect URI mismatch occurs
-- **Enable authorization:** ✅
+- **Enable authorization:** ❌ (must be disabled — see account linking note below)
 - **Enable folder creation:** ✅ (auto-creates Jellyfin user on first SSO login)
+- **OIDC scopes:** `openid`, `profile`, `email`, `groups`
 
 **SSO login URL:** `https://jellyfin.tustin.house/sso/OID/start/authentik`
+
+**Account linking:** Unlike Immich/Seafile (which match SSO logins to existing accounts by email), the Jellyfin SSO plugin uses `CanonicalLinks` — explicit mappings from SSO username to Jellyfin user GUID stored in `SSO-Auth.xml`. The `akadmin` SSO identity is mapped to the `root` Jellyfin admin account (GUID `17c618b2-57cf-4e2c-8ed6-0483b0e62bd0`). To link a new SSO user to an existing Jellyfin account, add a `CanonicalLinks` entry mapping the Authentik username to the Jellyfin user's GUID.
+
+**Critical: `EnableAuthorization` must be `false`.** When enabled, the SSO plugin overwrites Jellyfin user permissions on every login based on OIDC role/group claims. Even with `AdminRoles` set to `authentik Admins` and the `groups` scope requested, the plugin was stripping admin rights from the `root` account on each SSO login. Disabling `EnableAuthorization` means the plugin handles authentication only — Jellyfin's native permission system controls authorization. Admin rights set via the Jellyfin API/UI persist across SSO logins.
+
+**SSO plugin config location:** `/config/plugins/configurations/SSO-Auth.xml` inside the Jellyfin container.
 
 **Login page customization (✅ Done):** The login page is customized via the Jellyfin Branding API (`/System/Configuration/branding`) using two fields:
 
@@ -260,7 +267,7 @@ Immich is wired into Authentik via OAuth2/OIDC, configured through the Immich Sy
 
 ### Authentik side
 - **Provider:** OAuth2/OpenID Connect, named `Immich`
-- **Redirect URI:** `https://photos.tustin.house/auth/login`
+- **Redirect URIs:** `https://photos.tustin.house/auth/login`, `app.immich:///oauth-callback` (mobile app)
 - **Application:** slug `immich`, linked to above provider
 
 ### Immich side
@@ -349,7 +356,7 @@ claude
 | Immich NPM proxy host configured | ✅ Done |
 | Immich wired into Authentik SSO | ✅ Done |
 | Immich SSO-only login page (password login disabled) | ✅ Done |
-| Jellyfin SSO account linked to admin | ⏳ Planned |
+| Jellyfin SSO account linked to admin | ✅ Done |
 
 ---
 
@@ -365,7 +372,7 @@ claude
 8. ~~Deploy Immich for photo/video backup~~ ✅
 9. ~~Add `photos.tustin.house` proxy host in NPM~~ ✅
 10. ~~Wire Immich into Authentik SSO~~ ✅
-11. Link Jellyfin SSO `akadmin` account to the Jellyfin admin account (same pattern as Immich/Seafile)
+11. ~~Link Jellyfin SSO `akadmin` account to the Jellyfin admin account~~ ✅ (promoted `akadmin` SSO user to Jellyfin admin via Policy API; `root` account kept as local-login fallback)
 12. Set up mobile app backup for users
 
 ---

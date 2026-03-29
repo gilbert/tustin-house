@@ -1,0 +1,9 @@
+services:
+  landing:
+    image: nginx:alpine
+    container_name: landing
+    restart: unless-stopped
+    ports:
+      - "8090:80"
+    volumes:
+      - /sharedfolders/compose/landing-page:/usr/share/nginx/html:ro
