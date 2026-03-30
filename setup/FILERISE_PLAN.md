@@ -26,7 +26,7 @@ The core insight: the actual need is "web UI that writes files to a directory." 
 
 [FileRise](https://github.com/error311/FileRise) is a lightweight, self-hosted web file manager (PHP + Apache) with:
 
-- **Per-folder ACLs**: Independently toggle View, Upload, Create, Edit, Rename, Move, Copy, Delete, Extract, Share — per user, per folder.
+- **Per-folder ACLs** (Pro feature): Independently toggle View, Upload, Create, Edit, Rename, Move, Copy, Delete, Extract, Share — per user, per folder. Free tier: all authenticated users get equal access; use Authentik to control who can reach FileRise.
 - **Native OIDC**: Explicit Authentik support with auto-user-creation on first SSO login and IdP group → admin role mapping.
 - **Direct filesystem writes**: Files land exactly where they're uploaded. No internal storage format, no database. Jellyfin reads the same files.
 - **No database**: All state stored in flat files (JSON/txt). One fewer service to maintain and back up.
@@ -44,13 +44,14 @@ Files uploaded through FileRise's web UI are written directly to the filesystem.
 
 ### Privacy / permission model
 
+Per-folder ACLs are a FileRise Pro feature. On the free tier, all authenticated users have equal access. Access control is handled at the Authentik level — only users authorized in Authentik can reach FileRise at all.
+
 | Role | Access | How |
 |------|--------|-----|
-| **Admin** | Full access to all media folders, user management | FileRise admin + Authentik `filerise-admins` group |
-| **Uploader** | Upload + view in specific folders (e.g., Movies, TV) | FileRise per-folder ACLs set by admin |
-| **Viewer** | Browse and download only, no upload/delete | FileRise ACLs: View (all) + Download only |
+| **Admin** | Full access + user management | FileRise admin + Authentik `filerise-admins` group |
+| **User** | Upload, view, delete in all folders | Any user authorized in Authentik for the FileRise application |
 
-ACLs are managed through FileRise's admin panel (Admin → Folder Access). Authentik handles authentication; FileRise handles authorization per folder.
+If per-user/per-folder restrictions are needed later, upgrade to FileRise Pro or add Authentik policy bindings to restrict application access.
 
 ## Implementation
 
@@ -99,7 +100,7 @@ services:
     container_name: filerise
     restart: unless-stopped
     ports:
-      - "8090:80"
+      - "8091:80"
     environment:
       # ── Locale ──
       - TIMEZONE=America/Los_Angeles
@@ -108,12 +109,12 @@ services:
       - TOTAL_UPLOAD_SIZE=10G
       # ── Reverse proxy ──
       - SECURE=true
-      - FR_PUBLISHED_URL=https://files.tustin.house
+      - FR_PUBLISHED_URL=https://upload.tustin.house
       - FR_TRUSTED_PROXIES=127.0.0.1,172.16.0.0/12,10.0.0.0/8
       - FR_IP_HEADER=X-Forwarded-For
       # ── Permissions ──
-      - PUID=YOUR_UID
-      - PGID=YOUR_GID
+      - PUID=33
+      - PGID=100
       - CHOWN_ON_START=false
       - SCAN_ON_START=false
       # ── OIDC (Authentik) ──
@@ -135,7 +136,7 @@ services:
 
 Key decisions:
 
-- **Port 8090** — avoids conflicts with existing services (8080=Seafile, 8083=Seafile notifications, 8096=Jellyfin, 9000=Authentik, 2283=Immich).
+- **Port 8091** — avoids conflicts with existing services (8080=Seafile, 8083=Seafile notifications, 8090=landing page, 8096=Jellyfin, 9000=Authentik, 2283=Immich).
 - **No dedicated network** — FileRise has no database or sidecar services. A published port on the default bridge is sufficient (same pattern as Jellyfin but without `network_mode: host` since we don't need multiple ports).
 - **`CHOWN_ON_START=false`** — critical. The default (`true`) would recursively chown the entire media library on every container start. With a large library this is slow and may conflict with Jellyfin's expected permissions.
 - **`SCAN_ON_START=false`** — don't index the entire media library into FileRise's metadata on every start.
@@ -143,7 +144,7 @@ Key decisions:
 - **Uploads volume on HDD** (`/hdd-almond-10tb/media`) — bulk data on the 10TB drive per storage layout convention.
 - **Config volumes on NVMe** (`/sharedfolders/dev/config/filerise/`) — users/metadata are small files, belong on the fast drive.
 
-Replace `YOUR_UID` and `YOUR_GID` with the owner of the media directories (check with `ls -ln`).
+PUID 33 (www-data) and PGID 100 (users) match the media directory group ownership. The setgid bit on the directories ensures new files inherit GID 100.
 
 ### 3. Create config directories
 
@@ -152,10 +153,10 @@ sudo mkdir -p /sharedfolders/dev/config/filerise/users
 sudo mkdir -p /sharedfolders/dev/config/filerise/metadata
 ```
 
-Set ownership to match PUID/PGID:
+Set ownership to match PUID/PGID (33=www-data, 100=users):
 
 ```bash
-sudo chown -R YOUR_UID:YOUR_GID /sharedfolders/dev/config/filerise/
+sudo chown -R 33:100 /sharedfolders/dev/config/filerise/
 ```
 
 ### 4. Update Jellyfin compose
@@ -186,10 +187,10 @@ The only change is adding `media/` to each HDD path. Jellyfin's internal mount p
 In Nginx Proxy Manager (http://192.168.0.113:81):
 
 1. **Add Proxy Host**:
-   - Domain: `files.tustin.house`
+   - Domain: `upload.tustin.house`
    - Scheme: `http`
    - Forward Host: `127.0.0.1`
-   - Forward Port: `8090`
+   - Forward Port: `8091`
    - Enable: "Block Common Exploits", "Websockets Support"
 
 2. **SSL tab**:
@@ -211,7 +212,7 @@ In Nginx Proxy Manager (http://192.168.0.113:81):
 
 ### 6. Cloudflare Tunnel
 
-No changes needed. The existing wildcard route (`*.tustin.house → localhost:80`) already covers `files.tustin.house`. Cloudflare will route it to NPM, which proxies to FileRise on port 8090.
+No changes needed. The existing wildcard route (`*.tustin.house → localhost:80`) already covers `upload.tustin.house`. Cloudflare will route it to NPM, which proxies to FileRise on port 8091.
 
 However, check Cloudflare's upload size limit for your plan:
 
@@ -232,7 +233,7 @@ If on the free plan, uploads >100 MB will be rejected by Cloudflare before reach
    - Name: `FileRise`
    - Authorization flow: default (implicit consent, or explicit if you prefer)
    - Client type: Confidential
-   - Redirect URIs: `https://files.tustin.house/api/auth/auth.php?oidc=callback`
+   - Redirect URIs: `https://upload.tustin.house/api/auth/auth.php?oidc=callback`
    - Signing key: select existing or create one
    - Scopes: `openid`, `email`, `profile`, `groups`
    - Note the **Client ID** and **Client Secret**
@@ -241,13 +242,13 @@ If on the free plan, uploads >100 MB will be rejected by Cloudflare before reach
    - Name: `FileRise`
    - Slug: `filerise`
    - Provider: select the provider above
-   - Launch URL: `https://files.tustin.house`
+   - Launch URL: `https://upload.tustin.house`
 
 3. **Create a Group** (if not already existing):
    - Name: `filerise-admins`
    - Add admin users to this group
 
-#### In FileRise (https://files.tustin.house):
+#### In FileRise (https://upload.tustin.house):
 
 On first launch, FileRise prompts you to create a local admin account. Do this first, then:
 
@@ -256,41 +257,30 @@ On first launch, FileRise prompts you to create a local admin account. Do this f
    - Provider URL: `https://auth.tustin.house/application/o/filerise/`
    - Client ID: *(from Authentik)*
    - Client Secret: *(from Authentik)*
-   - Redirect URI: `https://files.tustin.house/api/auth/auth.php?oidc=callback`
+   - Redirect URI: `https://upload.tustin.house/api/auth/auth.php?oidc=callback`
 3. Click **Test OIDC discovery** to validate
 4. Save
 
 Users can now log in via the "Sign in with SSO" button. On first OIDC login, FileRise auto-creates a local account. Users in the `filerise-admins` Authentik group get admin privileges in FileRise.
 
-### 8. Configure per-folder ACLs
+### 8. Per-folder ACLs (skipped — Pro feature)
 
-After OIDC is working and users have logged in at least once (so their accounts exist in FileRise):
+Per-folder ACLs require FileRise Pro. On the free tier, all authenticated users have equal access to all folders. Access control is handled at the Authentik level — restrict which users can access the FileRise application via Authentik policies.
 
-1. Go to **Admin → Folder Access**
-2. For each media folder, set permissions per user:
-
-| Folder | Admin | Uploader | Viewer |
-|--------|-------|----------|--------|
-| movies | Manage (Owner) | View (all), Upload, Rename | View (all) |
-| tv | Manage (Owner) | View (all), Upload, Rename | View (all) |
-| music | Manage (Owner) | View (all), Upload, Rename | View (all) |
-| photos | Manage (Owner) | View (all), Upload | View (all) |
-| videos | Manage (Owner) | View (all), Upload, Rename | View (all) |
-
-Adjust per your needs. The key principle: uploaders can add content but only admins can delete.
+If upgraded to Pro later, configure per-folder permissions in **Admin → Folder Access**.
 
 ### 9. Verify the integration
 
 ```bash
 # Confirm FileRise is running
-curl -fsS http://localhost:8090/ | head -5
+curl -fsS http://localhost:8091/ | head -5
 
 # Confirm media directories are visible inside the container
 docker exec filerise ls /var/www/uploads/
 # Should show: movies  tv  music  photos  videos
 
 # Confirm NPM proxy is working
-curl -I https://files.tustin.house/
+curl -I https://upload.tustin.house/
 # Should return 200 (or 302 redirect to login)
 
 # Upload a test file via the FileRise web UI, then confirm Jellyfin can see it

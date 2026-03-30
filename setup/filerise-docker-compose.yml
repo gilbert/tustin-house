@@ -1,0 +1,41 @@
+# FileRise — web file manager for Jellyfin media uploads
+# Ref: https://github.com/error311/FileRise
+
+services:
+  filerise:
+    image: error311/filerise-docker:latest
+    container_name: filerise
+    restart: unless-stopped
+    ports:
+      - "8091:80"
+    environment:
+      # ── Locale ──
+      - TIMEZONE=America/Los_Angeles
+      - DATE_TIME_FORMAT=m/d/y  h:iA
+      # ── Uploads ──
+      - TOTAL_UPLOAD_SIZE=10G
+      # ── Reverse proxy ──
+      - SECURE=true
+      - FR_PUBLISHED_URL=https://upload.tustin.house
+      - FR_TRUSTED_PROXIES=127.0.0.1,172.16.0.0/12,10.0.0.0/8
+      - FR_IP_HEADER=X-Forwarded-For
+      # ── Permissions ──
+      - PUID=33
+      - PGID=100
+      - CHOWN_ON_START=false
+      - SCAN_ON_START=false
+      # ── OIDC (Authentik) ──
+      - FR_OIDC_AUTO_CREATE=true
+      - FR_OIDC_GROUP_CLAIM=groups
+      - FR_OIDC_ADMIN_GROUP=filerise-admins
+      - FR_OIDC_EXTRA_SCOPES=groups
+    volumes:
+      - /hdd-almond-10tb/media:/var/www/uploads
+      - /sharedfolders/dev/config/filerise/users:/var/www/users
+      - /sharedfolders/dev/config/filerise/metadata:/var/www/metadata
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
